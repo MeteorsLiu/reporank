@@ -11,6 +11,8 @@ import (
 	"sync"
 
 	"github.com/MeteorsLiu/reporank/info"
+	"github.com/goplus/llpkgstore/upstream"
+	"github.com/goplus/llpkgstore/upstream/installer/conan"
 )
 
 var matchRepoRegex = regexp.MustCompile("github.com/(.*?)/(.*?)/")
@@ -18,6 +20,7 @@ var matchRepoRegex = regexp.MustCompile("github.com/(.*?)/(.*?)/")
 type pkgWithScore struct {
 	Info  *info.PkgInfo
 	Score float64
+	Deps  []upstream.Package
 }
 
 func main() {
@@ -57,12 +60,19 @@ func main() {
 			score := New(results[2], results[1]).Score()
 			fmt.Println(pkgInfo, score)
 
+			installer := conan.NewConanInstaller(map[string]string{})
+			deps, _ := installer.Dependency(upstream.Package{
+				Name:    pkgInfo.Name,
+				Version: pkgInfo.Version,
+			})
+
 			allPkgsMu.Lock()
 			defer allPkgsMu.Unlock()
 
 			thisPkg := pkgWithScore{
 				Info:  pkgInfo,
 				Score: score,
+				Deps:  deps,
 			}
 			allPkgs = append(allPkgs, thisPkg)
 
@@ -73,7 +83,7 @@ func main() {
 	wg.Wait()
 
 	sort.Slice(allPkgs, func(i, j int) bool {
-		return allPkgs[i].Score > allPkgs[j].Score
+		return allPkgs[i].Score > allPkgs[j].Score && len(allPkgs[i].Deps) < len(allPkgs[j].Deps)
 	})
 
 	b, _ := json.Marshal(&allPkgs)
